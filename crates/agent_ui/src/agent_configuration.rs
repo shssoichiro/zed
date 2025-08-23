@@ -396,6 +396,51 @@ impl AgentConfiguration {
             )
     }
 
+    fn render_embed_configuration_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let providers = LanguageModelRegistry::read_global(cx).providers();
+
+        v_flex()
+            .w_full()
+            .child(
+                h_flex()
+                    .p(DynamicSpacing::Base16.rems(cx))
+                    .pr(DynamicSpacing::Base20.rems(cx))
+                    .pb_0()
+                    .mb_2p5()
+                    .items_start()
+                    .justify_between()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_0p5()
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .gap_2()
+                                    .justify_between()
+                                    .child(Headline::new("Codebase Indexing")),
+                            )
+                            .child(
+                                Label::new(
+                                    "Add at least one provider to enable codebase indexing.",
+                                )
+                                .color(Color::Muted),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .pl(DynamicSpacing::Base08.rems(cx))
+                    .pr(DynamicSpacing::Base20.rems(cx))
+                    .children(
+                        providers.into_iter().map(|provider| {
+                            self.render_provider_configuration_block(&provider, cx)
+                        }),
+                    ),
+            )
+    }
+
     fn render_command_permission(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let always_allow_tool_actions = AgentSettings::get_global(cx).always_allow_tool_actions;
         let fs = self.fs.clone();
@@ -992,7 +1037,8 @@ impl Render for AgentConfiguration {
                     .overflow_y_scroll()
                     .child(self.render_general_settings_section(cx))
                     .child(self.render_context_servers_section(window, cx))
-                    .child(self.render_provider_configuration_section(cx)),
+                    .child(self.render_provider_configuration_section(cx))
+                    .child(self.render_embed_configuration_section(cx)),
             )
             .child(
                 div()
