@@ -4,6 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use swiftide::{
     indexing::{
@@ -111,7 +113,7 @@ impl CodebaseIndexer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum EmbeddingProvider {
     Ollama {
         embed_model: String,

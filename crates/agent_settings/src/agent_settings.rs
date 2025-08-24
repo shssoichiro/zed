@@ -7,6 +7,7 @@ use collections::IndexMap;
 use gpui::{App, Pixels, SharedString};
 use language_model::LanguageModel;
 use schemars::{JsonSchema, json_schema};
+use semantic_index::EmbeddingProvider;
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsSources};
 use std::borrow::Cow;
@@ -75,6 +76,7 @@ pub struct AgentSettings {
     pub expand_edit_card: bool,
     pub expand_terminal_card: bool,
     pub use_modifier_to_send: bool,
+    pub embedding_providers: IndexMap<SharedString, EmbeddingProvider>,
 }
 
 impl AgentSettings {
@@ -315,6 +317,11 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     use_modifier_to_send: Option<bool>,
+    /// Configuration for embedding providers used for codebase indexing.
+    ///
+    /// Default: {}
+    #[serde(default)]
+    embedding_providers: Option<IndexMap<SharedString, EmbeddingProvider>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
@@ -502,6 +509,12 @@ impl Settings for AgentSettings {
                             },
                         )
                     }));
+            }
+
+            if let Some(embedding_providers) = &value.embedding_providers {
+                settings
+                    .embedding_providers
+                    .extend(embedding_providers.clone());
             }
         }
 

@@ -340,6 +340,7 @@ dependencies = [
  "language_model",
  "paths",
  "schemars",
+ "semantic_index",
  "serde",
  "serde_json",
  "serde_json_lenient",
@@ -414,6 +415,7 @@ dependencies = [
  "rules_library",
  "schemars",
  "search",
+ "semantic_index",
  "serde",
  "serde_json",
  "serde_json_lenient",
@@ -10166,6 +10168,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25d3f1defe457d1ac0fbaef0fe6926953cb33419dd3c8dbac53882d020bee697"
 dependencies = [
  "autocfg",
+ "cc",
  "flate2",
  "pkg-config",
  "serde",
@@ -15685,6 +15688,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "duckdb",
+ "schemars",
+ "serde",
  "sha2",
  "swiftide",
 ]

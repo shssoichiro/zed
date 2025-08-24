@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Duration};
 use agent_settings::AgentSettings;
 use assistant_tool::{ToolSource, ToolWorkingSet};
 use cloud_llm_client::Plan;
-use collections::HashMap;
+use collections::{HashMap, IndexMap};
 use context_server::ContextServerId;
 use extension::ExtensionManifest;
 use extension_host::ExtensionStore;
@@ -26,6 +26,7 @@ use project::{
     context_server_store::{ContextServerConfiguration, ContextServerStatus, ContextServerStore},
     project_settings::{ContextServerSettings, ProjectSettings},
 };
+use semantic_index;
 use settings::{Settings, update_settings_file};
 use ui::{
     Chip, ContextMenu, Disclosure, Divider, DividerColor, ElevationIndex, Indicator, PopoverMenu,
@@ -52,6 +53,8 @@ pub struct AgentConfiguration {
     context_server_store: Entity<ContextServerStore>,
     expanded_context_server_tools: HashMap<ContextServerId, bool>,
     expanded_provider_configurations: HashMap<LanguageModelProviderId, bool>,
+    embedding_provider_configurations: IndexMap<SharedString, semantic_index::EmbeddingProvider>,
+    expanded_embedding_provider_configurations: HashMap<SharedString, bool>,
     tools: Entity<ToolWorkingSet>,
     _registry_subscription: Subscription,
     scroll_handle: ScrollHandle,
@@ -102,12 +105,18 @@ impl AgentConfiguration {
             context_server_store,
             expanded_context_server_tools: HashMap::default(),
             expanded_provider_configurations: HashMap::default(),
+            embedding_provider_configurations: IndexMap::default(),
+            expanded_embedding_provider_configurations: HashMap::default(),
             tools,
             _registry_subscription: registry_subscription,
             scroll_handle,
             scrollbar_state,
         };
         this.build_provider_configuration_views(window, cx);
+
+        // Initialize embedding provider configurations from settings
+        let settings = AgentSettings::get_global(cx);
+        this.embedding_provider_configurations = settings.embedding_providers.clone();
         this
     }
 
@@ -397,7 +406,16 @@ impl AgentConfiguration {
     }
 
     fn render_embed_configuration_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let providers = LanguageModelRegistry::read_global(cx).providers();
+        let settings = AgentSettings::get_global(cx);
+        let embedding_providers: Vec<_> = settings
+            .embedding_providers
+            .iter()
+            .map(|(id, config)| (id.clone(), config.clone()))
+            .collect();
+        log::info!(
+            "Found the following embed providers: {:?}",
+            embedding_providers
+        );
 
         v_flex()
             .w_full()
@@ -418,11 +436,11 @@ impl AgentConfiguration {
                                     .w_full()
                                     .gap_2()
                                     .justify_between()
-                                    .child(Headline::new("Codebase Indexing")),
+                                    .child(Headline::new("Codebase Indexing"))
                             )
                             .child(
                                 Label::new(
-                                    "Add at least one provider to enable codebase indexing.",
+                                    "Configure providers for codebase indexing and semantic search.",
                                 )
                                 .color(Color::Muted),
                             ),
@@ -434,11 +452,231 @@ impl AgentConfiguration {
                     .pl(DynamicSpacing::Base08.rems(cx))
                     .pr(DynamicSpacing::Base20.rems(cx))
                     .children(
-                        providers.into_iter().map(|provider| {
-                            self.render_provider_configuration_block(&provider, cx)
-                        }),
+                        embedding_providers
+                            .into_iter()
+                            .map(|(provider_id, provider_config)| {
+                                self.render_embedding_provider_configuration_block(
+                                    provider_id,
+                                    provider_config,
+                                    cx
+                                )
+                            })
                     ),
             )
+    }
+
+    fn add_embedding_provider_configuration(
+        &mut self,
+        provider_name: String,
+        cx: &mut Context<Self>,
+    ) {
+        use semantic_index::{EmbeddingProvider, EmbeddingProviderPreset};
+
+        // Create default configuration for the provider
+        let provider_config = match provider_name.as_str() {
+            "ollama" => EmbeddingProvider::from(EmbeddingProviderPreset::OllamaNomic),
+            _ => return, // Ignore unknown providers
+        };
+
+        // Store the configuration
+        let provider_id = SharedString::from(provider_name);
+        self.embedding_provider_configurations
+            .insert(provider_id, provider_config);
+
+        cx.notify();
+    }
+
+    fn render_embedding_provider_configuration_block(
+        &mut self,
+        provider_id: SharedString,
+        provider_config: semantic_index::EmbeddingProvider,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let is_expanded = self
+            .expanded_embedding_provider_configurations
+            .get(&provider_id)
+            .copied()
+            .unwrap_or(false);
+
+        let _provider_name = provider_id.clone();
+        let provider_display_name = match provider_config {
+            semantic_index::EmbeddingProvider::Ollama { .. } => "Ollama",
+        };
+
+        v_flex()
+            .w_full()
+            .when(is_expanded, |this| this.mb_2())
+            .child(
+                div()
+                    .opacity(0.6)
+                    .px_2()
+                    .child(Divider::horizontal().color(DividerColor::Border)),
+            )
+            .child(
+                h_flex()
+                    .map(|this| {
+                        if is_expanded {
+                            this.mt_2().mb_1()
+                        } else {
+                            this.my_2()
+                        }
+                    })
+                    .w_full()
+                    .justify_between()
+                    .child(
+                        h_flex()
+                            .id(SharedString::from(format!(
+                                "embedding-provider-disclosure-{}",
+                                provider_id
+                            )))
+                            .cursor_pointer()
+                            .px_2()
+                            .py_0p5()
+                            .w_full()
+                            .justify_between()
+                            .rounded_sm()
+                            .hover(|hover| hover.bg(cx.theme().colors().element_hover))
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .gap_2()
+                                    .child(
+                                        Icon::new(IconName::FileTree)
+                                            .size(IconSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .child(h_flex().w_full().gap_1().child(
+                                        Label::new(provider_display_name).size(LabelSize::Large),
+                                    )),
+                            )
+                            .child(
+                                Disclosure::new(
+                                    SharedString::from(format!(
+                                        "embedding-provider-disclosure-{}",
+                                        provider_id
+                                    )),
+                                    is_expanded,
+                                )
+                                .opened_icon(IconName::ChevronUp)
+                                .closed_icon(IconName::ChevronDown),
+                            )
+                            .on_click(cx.listener({
+                                let provider_id = provider_id.clone();
+                                move |this, _event, _window, _cx| {
+                                    let is_expanded = this
+                                        .expanded_embedding_provider_configurations
+                                        .entry(provider_id.clone())
+                                        .or_insert(false);
+
+                                    *is_expanded = !*is_expanded;
+                                }
+                            })),
+                    ),
+            )
+            .child(div().w_full().px_2().when(is_expanded, |parent| {
+                parent.child(self.render_embedding_provider_settings(
+                    provider_id.clone(),
+                    provider_config,
+                    cx,
+                ))
+            }))
+    }
+
+    fn render_embedding_provider_settings(
+        &mut self,
+        provider_id: SharedString,
+        provider_config: semantic_index::EmbeddingProvider,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        match provider_config {
+            semantic_index::EmbeddingProvider::Ollama {
+                embed_model,
+                prompt_model,
+            } => {
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .p_2()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(Label::new("Embedding Model").size(LabelSize::Small))
+                            .child(
+                                Label::new("The model used for generating embeddings of your code")
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted)
+                            )
+                            .child(
+                                Label::new(format!("Current: {}", embed_model))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Default)
+                            )
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(Label::new("Prompt Model").size(LabelSize::Small))
+                            .child(
+                                Label::new("A small, fast model used to enhance embeddings with additional context. Recommended: qwen2.5-coder:1.7b")
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Muted)
+                            )
+                            .child(
+                                Label::new(format!("Current: {}", prompt_model))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Default)
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .child(
+                                Button::new(
+                                    SharedString::from(format!("remove-embedding-provider-{}", provider_id)),
+                                    "Remove Provider",
+                                )
+                                .color(Color::Error)
+                                .size(ui::ButtonSize::Compact)
+                                .on_click(cx.listener({
+                                    move |this, _event, _window, cx| {
+                                        this.remove_embedding_provider_configuration(provider_id.clone(), cx);
+                                    }
+                                }))
+                            )
+                    )
+            }
+        }
+    }
+
+    fn update_embedding_provider_config(
+        &mut self,
+        provider_id: SharedString,
+        new_config: semantic_index::EmbeddingProvider,
+        _cx: &mut Context<Self>,
+    ) {
+        self.embedding_provider_configurations
+            .insert(provider_id, new_config.clone());
+
+        // Update settings - placeholder for now
+        log::info!("Would update embedding provider config: {:?}", new_config);
+    }
+
+    fn remove_embedding_provider_configuration(
+        &mut self,
+        provider_id: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.embedding_provider_configurations
+            .shift_remove(&provider_id);
+        self.expanded_embedding_provider_configurations
+            .remove(&provider_id);
+
+        // Remove from settings - placeholder for now
+        log::info!("Would remove embedding provider: {}", provider_id);
+
+        cx.notify();
     }
 
     fn render_command_permission(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

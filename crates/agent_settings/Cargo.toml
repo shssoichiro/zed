@@ -18,6 +18,7 @@ collections.workspace = true
 gpui.workspace = true
 language_model.workspace = true
 schemars.workspace = true
+semantic_index.workspace = true
 serde.workspace = true
 settings.workspace = true
 workspace-hack.workspace = true
