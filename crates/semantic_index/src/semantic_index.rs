@@ -121,6 +121,14 @@ pub enum EmbeddingProvider {
     },
 }
 
+impl EmbeddingProvider {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Ollama { .. } => "Ollama",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingProviderPreset {
     OllamaNomic,

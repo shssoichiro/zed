@@ -412,10 +412,6 @@ impl AgentConfiguration {
             .iter()
             .map(|(id, config)| (id.clone(), config.clone()))
             .collect();
-        log::info!(
-            "Found the following embed providers: {:?}",
-            embedding_providers
-        );
 
         v_flex()
             .w_full()
@@ -465,27 +461,6 @@ impl AgentConfiguration {
             )
     }
 
-    fn add_embedding_provider_configuration(
-        &mut self,
-        provider_name: String,
-        cx: &mut Context<Self>,
-    ) {
-        use semantic_index::{EmbeddingProvider, EmbeddingProviderPreset};
-
-        // Create default configuration for the provider
-        let provider_config = match provider_name.as_str() {
-            "ollama" => EmbeddingProvider::from(EmbeddingProviderPreset::OllamaNomic),
-            _ => return, // Ignore unknown providers
-        };
-
-        // Store the configuration
-        let provider_id = SharedString::from(provider_name);
-        self.embedding_provider_configurations
-            .insert(provider_id, provider_config);
-
-        cx.notify();
-    }
-
     fn render_embedding_provider_configuration_block(
         &mut self,
         provider_id: SharedString,
@@ -497,11 +472,7 @@ impl AgentConfiguration {
             .get(&provider_id)
             .copied()
             .unwrap_or(false);
-
-        let _provider_name = provider_id.clone();
-        let provider_display_name = match provider_config {
-            semantic_index::EmbeddingProvider::Ollama { .. } => "Ollama",
-        };
+        let provider_display_name = provider_config.name();
 
         v_flex()
             .w_full()
@@ -603,14 +574,35 @@ impl AgentConfiguration {
                             .gap_1()
                             .child(Label::new("Embedding Model").size(LabelSize::Small))
                             .child(
-                                Label::new("The model used for generating embeddings of your code")
+                                Label::new("The model used for generating embeddings of your code.")
                                     .size(LabelSize::XSmall)
                                     .color(Color::Muted)
                             )
                             .child(
-                                Label::new(format!("Current: {}", embed_model))
-                                    .size(LabelSize::Small)
-                                    .color(Color::Default)
+                                h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .child(
+                                        Label::new(format!("Current: {}", embed_model))
+                                            .size(LabelSize::Small)
+                                            .color(Color::Default)
+                                    )
+                                    .child(
+                                        Button::new(
+                                            SharedString::from(format!("edit-embed-model-{}", provider_id)),
+                                            "Edit",
+                                        )
+                                        .icon(IconName::Pencil)
+                                        .icon_size(IconSize::XSmall)
+                                        .size(ui::ButtonSize::Compact)
+                                        .on_click(cx.listener({
+                                            let provider_id = provider_id.clone();
+                                            move |_this, _event, _window, _cx| {
+                                                // TODO: Show edit dialog
+                                                log::info!("Edit embed model for {}", provider_id);
+                                            }
+                                        }))
+                                    )
                             )
                     )
                     .child(
@@ -619,14 +611,35 @@ impl AgentConfiguration {
                             .gap_1()
                             .child(Label::new("Prompt Model").size(LabelSize::Small))
                             .child(
-                                Label::new("A small, fast model used to enhance embeddings with additional context. Recommended: qwen2.5-coder:1.7b")
+                                Label::new("Used to enhance embeddings with additional context. A small, fast model is recommended.")
                                     .size(LabelSize::XSmall)
                                     .color(Color::Muted)
                             )
                             .child(
-                                Label::new(format!("Current: {}", prompt_model))
-                                    .size(LabelSize::Small)
-                                    .color(Color::Default)
+                                h_flex()
+                                    .w_full()
+                                    .justify_between()
+                                    .child(
+                                        Label::new(format!("Current: {}", prompt_model))
+                                            .size(LabelSize::Small)
+                                            .color(Color::Default)
+                                    )
+                                    .child(
+                                        Button::new(
+                                            SharedString::from(format!("edit-prompt-model-{}", provider_id)),
+                                            "Edit",
+                                        )
+                                        .icon(IconName::Pencil)
+                                        .icon_size(IconSize::XSmall)
+                                        .size(ui::ButtonSize::Compact)
+                                        .on_click(cx.listener({
+                                            let provider_id = provider_id.clone();
+                                            move |_this, _event, _window, _cx| {
+                                                // TODO: Show edit dialog
+                                                log::info!("Edit prompt model for {}", provider_id);
+                                            }
+                                        }))
+                                    )
                             )
                     )
                     .child(
@@ -654,13 +667,15 @@ impl AgentConfiguration {
         &mut self,
         provider_id: SharedString,
         new_config: semantic_index::EmbeddingProvider,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
         self.embedding_provider_configurations
-            .insert(provider_id, new_config.clone());
+            .insert(provider_id, new_config);
 
-        // Update settings - placeholder for now
-        log::info!("Would update embedding provider config: {:?}", new_config);
+        // Update the global settings
+        self.update_embedding_provider_settings(cx);
+
+        cx.notify();
     }
 
     fn remove_embedding_provider_configuration(
@@ -673,10 +688,23 @@ impl AgentConfiguration {
         self.expanded_embedding_provider_configurations
             .remove(&provider_id);
 
-        // Remove from settings - placeholder for now
-        log::info!("Would remove embedding provider: {}", provider_id);
+        // Update the global settings
+        self.update_embedding_provider_settings(cx);
 
         cx.notify();
+    }
+
+    fn update_embedding_provider_settings(&self, cx: &mut Context<Self>) {
+        // Update the settings file with current embedding provider configurations
+        let embedding_providers = self.embedding_provider_configurations.clone();
+
+        update_settings_file::<AgentSettings>(self.fs.clone(), cx, move |_settings, _| {
+            // TODO: Implement proper settings update when AgentSettingsContent API is available
+            log::info!(
+                "Would update embedding providers in settings: {:?}",
+                embedding_providers.keys().collect::<Vec<_>>()
+            );
+        });
     }
 
     fn render_command_permission(&mut self, cx: &mut Context<Self>) -> impl IntoElement {

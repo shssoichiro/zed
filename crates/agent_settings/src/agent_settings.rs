@@ -518,6 +518,16 @@ impl Settings for AgentSettings {
             }
         }
 
+        // Add default Ollama embedding provider if none are configured
+        if settings.embedding_providers.is_empty() {
+            settings.embedding_providers.insert(
+                "ollama".into(),
+                semantic_index::EmbeddingProvider::from(
+                    semantic_index::EmbeddingProviderPreset::OllamaNomic,
+                ),
+            );
+        }
+
         debug_assert!(
             !sources.default.always_allow_tool_actions.unwrap_or(false),
             "For security, agent.always_allow_tool_actions should always be false in default.json. If it's true, that is a bug that should be fixed!"
